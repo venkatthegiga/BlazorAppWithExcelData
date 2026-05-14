@@ -1,0 +1,191 @@
+@page "/tasks"
+@using BlazorExcelApp.Models
+@using BlazorExcelApp.Services
+@inject ExcelService ExcelService
+@rendermode InteractiveServer
+
+<h3>Project Tasks</h3>
+
+@if (tasks == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h4 class="mb-0">@(isEditing ? "Edit Task" : "Add Task")</h4>
+        </div>
+        <div class="card-body">
+            <EditForm Model="currentTask" OnValidSubmit="SaveTask">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Project Name</label>
+                        <InputText class="form-control" @bind-Value="currentTask.ProjectName" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Task Name</label>
+                        <InputText class="form-control" @bind-Value="currentTask.TaskName" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Assigned To</label>
+                        <InputText class="form-control" @bind-Value="currentTask.AssignedTo" />
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Start Date</label>
+                        <InputDate class="form-control" @bind-Value="currentTask.StartDate" />
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Days Required</label>
+                        <InputNumber class="form-control" @bind-Value="currentTask.DaysRequired" />
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">End Date</label>
+                        <InputDate class="form-control" @bind-Value="currentTask.EndDate" />
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Progress</label>
+                        <InputNumber class="form-control" @bind-Value="currentTask.Progress" />
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-success">Save</button>
+                @if (isEditing)
+                {
+                    <button type="button" class="btn btn-secondary" @onclick="CancelEdit">Cancel</button>
+                }
+            </EditForm>
+        </div>
+    </div>
+
+    <div class="card mb-4 border-info">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">Filter Tasks</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4 mb-2">
+                    <input type="text" class="form-control" placeholder="Filter by Project..." @bind="filterProject" @bind:event="oninput" />
+                </div>
+                <div class="col-md-4 mb-2">
+                    <input type="text" class="form-control" placeholder="Filter by Task..." @bind="filterTaskName" @bind:event="oninput" />
+                </div>
+                <div class="col-md-4 mb-2">
+                    <input type="text" class="form-control" placeholder="Filter by Assigned..." @bind="filterAssignedTo" @bind:event="oninput" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Project Name</th>
+                <th>Task Name</th>
+                <th>Assigned To</th>
+                <th>Start Date</th>
+                <th>Days Required</th>
+                <th>End Date</th>
+                <th>Progress</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var task in FilteredTasks)
+            {
+                <tr class="@(isEditing && currentTask.Id == task.Id ? "table-warning" : "")">
+                    <td>@task.ProjectName</td>
+                    <td>@task.TaskName</td>
+                    <td>@task.AssignedTo</td>
+                    <td>@task.StartDate?.ToShortDateString()</td>
+                    <td>@task.DaysRequired</td>
+                    <td>@task.EndDate?.ToShortDateString()</td>
+                    <td>@task.Progress%</td>
+                    <td>
+                        @if (isEditing && currentTask.Id == task.Id)
+                        {
+                            <span class="badge bg-warning text-dark">Editing...</span>
+                        }
+                        <button class="btn btn-primary btn-sm" @onclick="() => EditTask(task)">Edit</button>
+                        <button class="btn btn-danger btn-sm" @onclick="() => DeleteTask(task.Id)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<ProjectTask>? tasks;
+    private ProjectTask currentTask = new();
+    private bool isEditing = false;
+
+    private string filterProject = "";
+    private string filterTaskName = "";
+    private string filterAssignedTo = "";
+
+    private IEnumerable<ProjectTask> FilteredTasks => tasks?
+        .Where(t => 
+            (string.IsNullOrEmpty(filterProject) || (t.ProjectName?.Contains(filterProject, StringComparison.OrdinalIgnoreCase) ?? false)) &&
+            (string.IsNullOrEmpty(filterTaskName) || (t.TaskName?.Contains(filterTaskName, StringComparison.OrdinalIgnoreCase) ?? false)) &&
+            (string.IsNullOrEmpty(filterAssignedTo) || (t.AssignedTo?.Contains(filterAssignedTo, StringComparison.OrdinalIgnoreCase) ?? false))
+        ) ?? Enumerable.Empty<ProjectTask>();
+
+    protected override void OnInitialized()
+    {
+        LoadTasks();
+    }
+
+    private void LoadTasks()
+    {
+        tasks = ExcelService.GetTasks();
+    }
+
+    private void SaveTask()
+    {
+        Console.WriteLine($"SaveTask called. isEditing: {isEditing}, Id: {currentTask.Id}");
+        if (isEditing)
+        {
+            ExcelService.UpdateTask(currentTask);
+        }
+        else
+        {
+            ExcelService.AddTask(currentTask);
+        }
+        currentTask = new();
+        isEditing = false;
+        LoadTasks();
+    }
+
+    private void EditTask(ProjectTask task)
+    {
+        Console.WriteLine($"EditTask clicked for Id: {task.Id}");
+        currentTask = new ProjectTask
+        {
+            Id = task.Id,
+            ProjectName = task.ProjectName,
+            TaskName = task.TaskName,
+            AssignedTo = task.AssignedTo,
+            StartDate = task.StartDate,
+            DaysRequired = task.DaysRequired,
+            EndDate = task.EndDate,
+            Progress = task.Progress
+        };
+        isEditing = true;
+        StateHasChanged();
+    }
+
+    private void DeleteTask(int id)
+    {
+        Console.WriteLine($"DeleteTask called for Id: {id}");
+        ExcelService.DeleteTask(id);
+        LoadTasks();
+    }
+
+    private void CancelEdit()
+    {
+        currentTask = new();
+        isEditing = false;
+    }
+}
